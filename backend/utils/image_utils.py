@@ -1,8 +1,6 @@
 from PIL import Image
+from config import MAX_FILE_SIZE, ALLOWED_TYPES, IMAGE_SIZE, IMAGE_QUALITY
 import io
-
-ALLOWED_TYPES = {"image/jpeg", "image/png", "image/webp"}
-MAX_FILE_SIZE = 10 * 1024 * 1024  # 10MB
 
 def validate_image(content_type: str, file_size: int) -> tuple[bool, str]:
     if content_type not in ALLOWED_TYPES:

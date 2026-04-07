@@ -1,7 +1,8 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException
+from fastapi import APIRouter, UploadFile, File, HTTPException, Form
 from fastapi.responses import Response
 from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
+from services.ml_services import generate
 
 logger = get_logger("generate")
 router = APIRouter()
@@ -11,12 +12,13 @@ def generate_info():
     return {
         "endpoint": "/generate",
         "method": "POST",
-        "input": "image file (JPEG, PNG, WEBP)",
+        "input": "image file (JPEG, PNG, WEBP) + optional style",
+        "styles": ["scandinavian", "bohemian", "industrial", "minimalist"],
         "output": "redesigned room image (JPEG)",
     }
 
 @router.post("/")
-async def generate_design(file: UploadFile = File(...)):
+async def generate_design(file: UploadFile = File(...), style: str = Form(default="scandinavian")):
     logger.info(f"Request Recieved | Filename: {file.filename} | type: {file.content_type}")
     
     image_bytes = await file.read()
@@ -32,6 +34,9 @@ async def generate_design(file: UploadFile = File(...)):
     #Preprocess (resize to 512x512 and convert to RGB)
     preprocessed_bytes = preprocess_image(image_bytes)
     logger.info(f"Image Preprocessed | Output Size: {len(preprocessed_bytes)} bytes")
+
+    result_bytes = generate(preprocessed_bytes)
+    logger.info(f"ML Service Returned | Output Size: {len(result_bytes)} bytes")
 
     return Response (
         content=preprocessed_bytes,

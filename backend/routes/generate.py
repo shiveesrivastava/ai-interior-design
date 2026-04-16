@@ -1,44 +1,48 @@
-from fastapi import APIRouter, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException
 from fastapi.responses import Response
+from services.ml_services import generate
 from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
-from services.ml_services import generate
+from config import DEFAULT_STYLE
 
-logger = get_logger("generate")
 router = APIRouter()
+logger = get_logger("generate_router")
 
-@router.get("/")
-def generate_info():
-    return {
-        "endpoint": "/generate",
-        "method": "POST",
-        "input": "image file (JPEG, PNG, WEBP) + optional style",
-        "styles": ["scandinavian", "bohemian", "industrial", "minimalist"],
-        "output": "redesigned room image (JPEG)",
-    }
+@router.post("/generate/")
+async def generate_design(
+    file: UploadFile = File(...),
+    base_prompt: str = Form(DEFAULT_STYLE),
+    click_x: int = Form(None),
+    click_y: int = Form(None),
+    user_id: str = Form("default")
+):
+    logger.info(f"Request received | file={file.filename}")
 
-@router.post("/")
-async def generate_design(file: UploadFile = File(...), style: str = Form(default="scandinavian")):
-    logger.info(f"Request Recieved | Filename: {file.filename} | type: {file.content_type}")
-    
+    # Read file
     image_bytes = await file.read()
 
-    #Validate file type and size
+    # Validate
     is_valid, message = validate_image(file.content_type, len(image_bytes))
     if not is_valid:
-        logger.warning(f"Validation Failed | {message}")
         raise HTTPException(status_code=400, detail=message)
-    
-    logger.info(f"Validation Passed | size: {len(image_bytes)} bytes")
-    
-    #Preprocess (resize to 512x512 and convert to RGB)
-    preprocessed_bytes = preprocess_image(image_bytes)
-    logger.info(f"Image Preprocessed | Output Size: {len(preprocessed_bytes)} bytes")
 
-    result_bytes = generate(preprocessed_bytes)
-    logger.info(f"ML Service Returned | Output Size: {len(result_bytes)} bytes")
+    # Preprocess
+    try:
+        processed_bytes = preprocess_image(image_bytes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
-    return Response (
-        content=preprocessed_bytes,
-        media_type="image/jpeg"
-    )
+    # Call ML (this goes to ngrok)
+    try:
+        result_bytes = generate(
+            image_bytes=processed_bytes,
+            base_prompt=base_prompt,
+            click_x=click_x,
+            click_y=click_y,
+            user_id=user_id
+        )
+        return Response(content=result_bytes, media_type="image/jpeg")
+
+    except Exception as e:
+        logger.error(f"Generation failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

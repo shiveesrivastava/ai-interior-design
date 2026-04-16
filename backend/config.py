@@ -17,6 +17,7 @@ DEFAULT_STYLE = "scandinavian"
 # --- ML Pipeline ---
 ML_INFERENCE_STEPS = 20
 ML_GUIDANCE_SCALE = 7.5
+ML_TIMEOUT_SECONDS = 120
 
 # --- Storage (Week 3) ---
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
@@ -24,3 +25,7 @@ SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 
 # --- Cache (Week 3) ---
 REDIS_URL = os.getenv("REDIS_URL", "")
+
+# --- ngrok (Kaggle) ---
+NGROK_URL = "https://wackiness-spoils-manhunt.ngrok-free.dev"
+USE_LOCAL_MODEL = False

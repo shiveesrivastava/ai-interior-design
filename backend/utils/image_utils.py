@@ -39,6 +39,9 @@ def preprocess_image(image_bytes: bytes) -> bytes:
     try:
         probe = Image.open(io.BytesIO(image_bytes))
         probe.verify()  # reads file data; catches renamed/corrupt files
+        width, height = probe.size
+        if width < 128 or height < 128:
+            logger.warning(f"Very Small image detected: {width}x{height}")
     except UnidentifiedImageError:
         logger.warning("Corrupt or unrecognised image content")
         raise ValueError(
@@ -47,7 +50,7 @@ def preprocess_image(image_bytes: bytes) -> bytes:
         )
     except Exception as e:
         logger.warning(f"Image verification failed: {e}")
-        raise ValueError(f"Could not read image: {e}")
+        raise ValueError("Invalid or Corrupted image file.")
 
     # Step 2 — re-open after verify() since verify() closes the stream
     try:
@@ -61,7 +64,23 @@ def preprocess_image(image_bytes: bytes) -> bytes:
                 f"Maximum supported is ~7000x7000."
             )
 
-        if image.mode != "RGB":
+        if getattr(image, "is_animated", False):
+            logger.warning("Animated image detected; using only first frame")
+            image.seek(0)
+
+        #Normalise color modes
+        if image.mode == "RGBA":
+            logger.info("Converting RGBA to RGB by removing transparency")
+            background = Image.new("RGB", image.size, (255, 255, 255))
+            background.paste(image, mask=image.split()[3])  # 3 is alpha channel
+            image = background
+        
+        elif image.mode == "CMYK":
+            logger.info("Converting CMYK to RGB")
+            image = image.convert("RGB")
+
+        elif image.mode != "RGB":
+            logger.info(f"Converting {image.mode} to RGB")
             image = image.convert("RGB")
 
         image = image.resize(IMAGE_SIZE, Image.LANCZOS)
@@ -74,4 +93,4 @@ def preprocess_image(image_bytes: bytes) -> bytes:
         raise
     except Exception as e:
         logger.warning(f"Image preprocessing failed: {e}")
-        raise ValueError(f"Failed to process image: {e}")
+        raise ValueError(f"Failed to process image")

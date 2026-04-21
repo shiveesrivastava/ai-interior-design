@@ -3,7 +3,7 @@
 **Version:** 2.0  
 **Last Updated:** April 2026  
 **Base URL (local):** http://127.0.0.1:8000  
-**Base URL (production):** ngrok URL (updated in Week 3)
+**Base URL (production):** "https://wackiness-spoils-manhunt.ngrok-free.dev"
 
 ---
 
@@ -173,7 +173,11 @@ curl -X POST "http://127.0.0.1:8000/generate/" \
 
 ```bash
 curl -X POST "http://127.0.0.1:8000/generate/?format=base64" \
-  -F "file=@room.jpg"
+     -F "file=@room.jpg" \
+     -F "base_prompt=modern minimalist design" \
+     -F "click_x=256" \
+     -F "click_y=256" \
+     -F "user_id=user123"
 ```
 
 ---
@@ -190,5 +194,36 @@ curl -X POST "http://127.0.0.1:8000/generate/?format=base64" \
 ---
 
 ````
+## Rate Limiting & Usage Notes
+
+- The ML pipeline runs on Kaggle GPU (T4)
+- Approximate limit: ~30 hours per week
+- Excessive usage may cause:
+  - slower responses
+  - temporary unavailability
+
+Use responsibly during testing.
+
+## Performance
+
+- Typical response time: 30–60 seconds
+- Depends on:
+  - GPU availability
+  - image complexity
+  - current load
+
+Timeout threshold: ~120 seconds
+
+## Example
+
+### Input
+- Image size: ~700 KB
+
+### Output
+- Format: JPEG
+- Size: ~150–300 KB
+
+### Base64 Response
+- Size increases by ~33% compared to raw image
 
 ---

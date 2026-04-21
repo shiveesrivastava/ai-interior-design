@@ -4,6 +4,20 @@ from utils.logger import get_logger
 
 logger = get_logger("ml_services")
 
+def log_gpu_memory(stage: str):
+    try:
+        import torch
+        if torch.cuda.is_available():
+            allocated = torch.cuda.memory_allocated() / (1024 ** 2)
+            reserved = torch.cuda.memory_reserved() / (1024 ** 2)
+
+            logger.info(
+                f"[GPU] {stage} | Allocated: {allocated:.2f} MB | Reserved: {reserved:.2f} MB"
+            )
+    except Exception:
+        # silently ignore if torch not available
+        pass
+
 def load_pipeline():
     if USE_LOCAL_MODEL:
         logger.info("Local model mode - skipping pipeline load")
@@ -13,7 +27,8 @@ def load_pipeline():
 def generate(image_bytes: bytes, base_prompt: str = None,
              click_x: int = None, click_y: int = None,
              user_id: str = "default") -> bytes:
-
+    
+    import time
     if USE_LOCAL_MODEL:
         # Future: local model logic here
         raise NotImplementedError("Local model not configured")
@@ -55,3 +70,6 @@ def _call_ngrok(image_bytes: bytes, base_prompt: str = None,
         raise Exception("Pipeline timed out — Kaggle session may be busy")
     except requests.exceptions.ConnectionError:
         raise Exception("Cannot reach pipeline — check ngrok URL is active")
+    
+def is_pipeline_available():
+    return not USE_LOCAL_MODEL and NGROK_URL != ""

@@ -1,5 +1,13 @@
+.env
+
 venv/
+.venv/
+
 __pycache__/
 *.pyc
-.env
-logs/
+
+test.jpg
+test_supabase.py
+test_storage_services.py
+
+backend.log

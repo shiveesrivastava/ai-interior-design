@@ -1,8 +1,8 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query 
-from fastapi.responses import Response
 from services.ml_services import generate, log_gpu_memory, is_pipeline_available
 from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
+from services.storage_services import upload_image
 from config import DEFAULT_STYLE
 import base64
 import uuid
@@ -41,6 +41,8 @@ async def generate_design(
     global total_requests, success_requests, failed_requests, active_requests
     active_requests += 1
     request_id = str(uuid.uuid4())[:8]
+    input_filename = f"input_{request_id}.jpg"
+    output_filename = f"output_{request_id}.jpg"
     start_time = time.time()
     total_requests += 1
     logger.info(f"[REQ-{request_id}] Request received | file={file.filename}")
@@ -65,8 +67,26 @@ async def generate_design(
     try:
         processed_bytes = preprocess_image(image_bytes)
     except Exception as e:
-        logger.error(f"[REQ-{request_id}] Image preprocessing error: {e}")
-        raise HTTPException(status_code=400, detail="Invalid image content or dimensions.")
+        logger.error(
+            f"[REQ-{request_id}] Image preprocessing error: {e}"
+        )
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid image content or dimensions."
+        )
+    try:
+        input_url = await upload_image(
+            processed_bytes,
+            input_filename
+        )
+        logger.info(
+            f"[REQ-{request_id}] Input image uploaded: {input_url}"
+        )
+    except Exception as e:
+        logger.warning(
+            f"[REQ-{request_id}] Input upload failed: {e}"
+        )
+        input_url = None
     
     preprocess_time = time.time()
     logger.info(f"[REQ-{request_id}] Preprocessing done in {(preprocess_time - validate_time)*1000:.2f} ms")
@@ -102,6 +122,16 @@ async def generate_design(
                     raise e  # rethrow after last attempt
 
         ml_time = time.time()
+        try:
+            output_url = await upload_image(
+                result_bytes,
+                output_filename
+            )
+        except Exception as e:
+            logger.warning(
+                f"[REQ-{request_id}] Output upload failed: {e}"
+            )
+            output_url = None
         logger.info(f"[REQ-{request_id}] ML generation done in {(ml_time - preprocess_time)*1000:.2f} ms")
 
         if len(result_bytes) > 5 * 1024 * 1024:
@@ -118,9 +148,16 @@ async def generate_design(
             encoded = base64.b64encode(result_bytes).decode()
             return { "image_base64": encoded }
         
-        return Response(content=result_bytes, 
-                        media_type="image/jpeg",
-                        headers={"Content-Disposition": 'inline; filename="redesigned_room.jpg"'})
+        return {
+            "status": "success",
+            "request_id": request_id,
+            "input_url": input_url,
+            "output_url": output_url,
+            "processing_time_ms": round(
+                (total_time - start_time) * 1000,
+                2
+            )
+        }
     
     except asyncio.TimeoutError:
         failed_requests += 1

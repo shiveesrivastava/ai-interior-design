@@ -1,4 +1,6 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 # --- Server ---
 HOST = os.getenv("HOST", "127.0.0.1")
@@ -22,6 +24,7 @@ ML_TIMEOUT_SECONDS = 120
 # --- Storage (Week 3) ---
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
+SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "")
 
 # --- Cache (Week 3) ---
 REDIS_URL = os.getenv("REDIS_URL", "")

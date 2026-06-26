@@ -1,0 +1,19 @@
+# Environment
+.env
+
+# Virtual environments
+venv/
+.venv/
+
+# Python cache
+__pycache__/
+**/__pycache__/
+*.py[cod]
+
+# Logs
+backend.log
+
+# Test files
+tests/test.jpg
+tests/test_supabase.py
+tests/test_storage_services.py

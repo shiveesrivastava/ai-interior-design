@@ -21,13 +21,14 @@ ML_INFERENCE_STEPS = 20
 ML_GUIDANCE_SCALE = 7.5
 ML_TIMEOUT_SECONDS = 120
 
-# --- Storage (Week 3) ---
+# --- Storage ---
 SUPABASE_URL = os.getenv("SUPABASE_URL", "")
 SUPABASE_KEY = os.getenv("SUPABASE_KEY", "")
 SUPABASE_BUCKET = os.getenv("SUPABASE_BUCKET", "")
 
-# --- Cache (Week 3) ---
-REDIS_URL = os.getenv("REDIS_URL", "")
+# --- Cache ---
+UPSTASH_REDIS_REST_URL = os.getenv("UPSTASH_REDIS_REST_URL", "")
+UPSTASH_REDIS_REST_TOKEN = os.getenv("UPSTASH_REDIS_REST_TOKEN", "")
 
 # --- ngrok (Kaggle) ---
 NGROK_URL = "https://wackiness-spoils-manhunt.ngrok-free.dev"

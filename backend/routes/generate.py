@@ -3,6 +3,7 @@ from services.ml_services import generate, log_gpu_memory, is_pipeline_available
 from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
 from services.storage_services import upload_image
+from services.cache_services import generate_cache_key, get_from_cache, save_to_cache
 from config import DEFAULT_STYLE
 import base64
 import uuid
@@ -66,6 +67,7 @@ async def generate_design(
     # Preprocess
     try:
         processed_bytes = preprocess_image(image_bytes)
+
     except Exception as e:
         logger.error(
             f"[REQ-{request_id}] Image preprocessing error: {e}"
@@ -74,19 +76,42 @@ async def generate_design(
             status_code=400,
             detail="Invalid image content or dimensions."
         )
+
+    # Generate cache key
+    cache_key = generate_cache_key(
+        processed_bytes,
+        base_prompt,
+        click_x,
+        click_y
+    )
+
+    # Check Redis cache
     try:
-        input_url = await upload_image(
-            processed_bytes,
-            input_filename
-        )
+        cached_response = await get_from_cache(cache_key)
+        if cached_response is not None:
+            success_requests += 1
+            log_stats()
+
+            cache_time = time.time()
+            logger.info(
+                f"[REQ-{request_id}] Cache HIT | "
+                f"Key={cache_key[:12]} | "
+                f"Latency={(cache_time-start_time)*1000:.2f} ms"
+            )
+            cached_response["cache_hit"] = True
+            return cached_response
+
         logger.info(
-            f"[REQ-{request_id}] Input image uploaded: {input_url}"
+            f"[REQ-{request_id}] Cache MISS | Key={cache_key[:12]}"
         )
+
     except Exception as e:
         logger.warning(
-            f"[REQ-{request_id}] Input upload failed: {e}"
+            f"[REQ-{request_id}] Redis unavailable: {e}"
         )
-        input_url = None
+        logger.info(
+            f"[REQ-{request_id}] Continuing without cache."
+        )
     
     preprocess_time = time.time()
     logger.info(f"[REQ-{request_id}] Preprocessing done in {(preprocess_time - validate_time)*1000:.2f} ms")
@@ -123,6 +148,19 @@ async def generate_design(
 
         ml_time = time.time()
         try:
+            input_url = await upload_image(
+                processed_bytes,
+                input_filename
+            )
+            logger.info(
+                f"[REQ-{request_id}] Input image uploaded: {input_url}"
+            )
+        except Exception as e:
+            logger.warning(
+                f"[REQ-{request_id}] Input upload failed: {e}"
+            )
+            input_url = None
+        try:
             output_url = await upload_image(
                 result_bytes,
                 output_filename
@@ -148,9 +186,10 @@ async def generate_design(
             encoded = base64.b64encode(result_bytes).decode()
             return { "image_base64": encoded }
         
-        return {
+        response_data = {
             "status": "success",
             "request_id": request_id,
+            "cache_hit": False,
             "input_url": input_url,
             "output_url": output_url,
             "processing_time_ms": round(
@@ -158,6 +197,19 @@ async def generate_design(
                 2
             )
         }
+
+        try:
+            await save_to_cache(
+                cache_key,
+                response_data
+            )
+
+        except Exception as e:
+            logger.warning(
+                f"[REQ-{request_id}] Failed to save cache: {e}"
+            )
+
+        return response_data
     
     except asyncio.TimeoutError:
         failed_requests += 1
@@ -176,7 +228,10 @@ async def generate_design(
         logger.error(f"[REQ-{request_id}] ML Pipeline error: {e}")
 
         total_time = time.time()
-        logger.info(f"[REQ-{request_id}] Total processing time (failed): {(total_time - start_time)*1000:.2f} ms")
+        logger.info(
+            f"[REQ-{request_id}] Failed request | "
+            f"Latency={(total_time-start_time)*1000:.2f} ms"
+        )
 
         if "timeout" in error_msg:
             raise HTTPException(status_code=504, detail="Image generation timed out. Please try again.")

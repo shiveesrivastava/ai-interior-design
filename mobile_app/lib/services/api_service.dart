@@ -2,7 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../models/generate_response.dart';
+<<<<<<< HEAD
 import 'package:http_parser/http_parser.dart';
+=======
+>>>>>>> origin/main
 
 // Handles all communication with the FastAPI backend.
 //
@@ -11,8 +14,12 @@ import 'package:http_parser/http_parser.dart';
 // "https://abcd-1234.ngrok-free.app"). Do NOT include a trailing slash.
 class ApiService {
   // TODO: replace this with the real backend URL before testing Phase 5.
+<<<<<<< HEAD
   //NEED TO CHANGE LATER// //THE URL NGROK LINK CHANGE//
   static const String baseUrl = "http://127.0.0.1:8000";
+=======
+  static const String baseUrl = "https://wackiness-spoils-manhunt.ngrok-free.dev";
+>>>>>>> origin/main
 
   // Sends the selected image + style to the backend and waits for the
   // generated result. Throws an Exception with a readable message on failure.
@@ -27,11 +34,15 @@ class ApiService {
     request.fields['base_prompt'] = style;
     request.fields['user_id'] = 'flutter_app_user';
     request.files.add(
+<<<<<<< HEAD
       await http.MultipartFile.fromPath(
         'file',
         imageFile.path,
         contentType: MediaType('image', 'jpeg'),
       ),
+=======
+      await http.MultipartFile.fromPath('file', imageFile.path),
+>>>>>>> origin/main
     );
 
     try {

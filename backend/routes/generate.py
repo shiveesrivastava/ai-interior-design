@@ -4,7 +4,8 @@ from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
 from services.storage_services import upload_image
 from services.cache_services import generate_cache_key, get_from_cache, save_to_cache
-from config import DEFAULT_STYLE
+from services.history_service import save_generation, get_user_history
+from config import DEFAULT_STYLE, MIN_PROMPT_LENGTH, MAX_PROMPT_LENGTH
 import base64
 import uuid
 import time
@@ -37,6 +38,7 @@ async def generate_design(
     click_x: int = Form(None),
     click_y: int = Form(None),
     user_id: str = Form("default"),
+    force_regenerate: bool = Form(False),
     format: str = Query("raw", pattern="^(raw|base64)$")
 ):
     global total_requests, success_requests, failed_requests, active_requests
@@ -51,6 +53,15 @@ async def generate_design(
     filename = file.filename.lower()
     if not filename.endswith((".jpg", ".jpeg", ".png", ".webp")):
         raise HTTPException(status_code=400, detail="Invalid file extension. Allowed: .jpg, .jpeg, .png, .webp")
+
+    # base_prompt is now a full custom design prompt (not a fixed style
+    # keyword), so validate it by length rather than against a fixed list.
+    base_prompt = base_prompt.strip() if base_prompt else DEFAULT_STYLE
+    if not (MIN_PROMPT_LENGTH <= len(base_prompt) <= MAX_PROMPT_LENGTH):
+        raise HTTPException(
+            status_code=400,
+            detail=f"base_prompt must be between {MIN_PROMPT_LENGTH} and {MAX_PROMPT_LENGTH} characters."
+        )
 
     # Read file
     image_bytes = await file.read()
@@ -85,33 +96,55 @@ async def generate_design(
         click_y
     )
 
-    # Check Redis cache
-    try:
-        cached_response = await get_from_cache(cache_key)
-        if cached_response is not None:
-            success_requests += 1
-            log_stats()
+    # Check Redis cache (skipped entirely when the user asks to regenerate)
+    if not force_regenerate:
+        try:
+            cached_response = await get_from_cache(cache_key)
+            if cached_response is not None:
+                success_requests += 1
+                log_stats()
 
-            cache_time = time.time()
+                cache_time = time.time()
+                logger.info(
+                    f"[REQ-{request_id}] Cache HIT | "
+                    f"Key={cache_key[:12]} | "
+                    f"Latency={(cache_time-start_time)*1000:.2f} ms"
+                )
+                cached_response["cache_hit"] = True
+                cached_response["processing_time_ms"] = round(
+                    (cache_time - start_time) * 1000, 2
+                )
+
+                try:
+                    await save_generation({
+                        "request_id": request_id,
+                        "user_id": user_id,
+                        "base_prompt": base_prompt,
+                        "click_x": click_x,
+                        "click_y": click_y,
+                        "input_url": cached_response.get("input_url"),
+                        "output_url": cached_response.get("output_url"),
+                        "cache_hit": True,
+                        "processing_time_ms": cached_response.get("processing_time_ms"),
+                    })
+                except Exception as e:
+                    logger.warning(f"[REQ-{request_id}] Failed to save history (cache hit): {e}")
+
+                return cached_response
+
             logger.info(
-                f"[REQ-{request_id}] Cache HIT | "
-                f"Key={cache_key[:12]} | "
-                f"Latency={(cache_time-start_time)*1000:.2f} ms"
+                f"[REQ-{request_id}] Cache MISS | Key={cache_key[:12]}"
             )
-            cached_response["cache_hit"] = True
-            return cached_response
 
-        logger.info(
-            f"[REQ-{request_id}] Cache MISS | Key={cache_key[:12]}"
-        )
-
-    except Exception as e:
-        logger.warning(
-            f"[REQ-{request_id}] Redis unavailable: {e}"
-        )
-        logger.info(
-            f"[REQ-{request_id}] Continuing without cache."
-        )
+        except Exception as e:
+            logger.warning(
+                f"[REQ-{request_id}] Redis unavailable: {e}"
+            )
+            logger.info(
+                f"[REQ-{request_id}] Continuing without cache."
+            )
+    else:
+        logger.info(f"[REQ-{request_id}] force_regenerate=True | Skipping cache lookup")
     
     preprocess_time = time.time()
     logger.info(f"[REQ-{request_id}] Preprocessing done in {(preprocess_time - validate_time)*1000:.2f} ms")
@@ -184,6 +217,20 @@ async def generate_design(
 
         if format == "base64":
             encoded = base64.b64encode(result_bytes).decode()
+            try:
+                await save_generation({
+                    "request_id": request_id,
+                    "user_id": user_id,
+                    "base_prompt": base_prompt,
+                    "click_x": click_x,
+                    "click_y": click_y,
+                    "input_url": input_url,
+                    "output_url": output_url,
+                    "cache_hit": False,
+                    "processing_time_ms": round((time.time() - start_time) * 1000, 2),
+                })
+            except Exception as e:
+                logger.warning(f"[REQ-{request_id}] Failed to save history: {e}")
             return { "image_base64": encoded }
         
         response_data = {
@@ -208,6 +255,21 @@ async def generate_design(
             logger.warning(
                 f"[REQ-{request_id}] Failed to save cache: {e}"
             )
+
+        try:
+            await save_generation({
+                "request_id": request_id,
+                "user_id": user_id,
+                "base_prompt": base_prompt,
+                "click_x": click_x,
+                "click_y": click_y,
+                "input_url": input_url,
+                "output_url": output_url,
+                "cache_hit": False,
+                "processing_time_ms": response_data["processing_time_ms"],
+            })
+        except Exception as e:
+            logger.warning(f"[REQ-{request_id}] Failed to save history: {e}")
 
         return response_data
     
@@ -260,8 +322,29 @@ def get_metadata():
         },
         "features": {
             "base64_supported": True,
-            "click_coordinates_supported": True
+            "click_coordinates_supported": True,
+            "custom_prompt_supported": True,
+            "force_regenerate_supported": True,
+            "history_supported": True
+        },
+        "prompt_constraints": {
+            "min_length": MIN_PROMPT_LENGTH,
+            "max_length": MAX_PROMPT_LENGTH
         }
+    }
+
+@router.get("/history")
+async def get_history(user_id: str = Query("default"), limit: int = Query(20, ge=1, le=100)):
+    """
+    Return a user's past generations, most recent first, so the client can
+    either display them (view history) or resubmit with force_regenerate=true
+    for a fresh version.
+    """
+    records = await get_user_history(user_id, limit)
+    return {
+        "user_id": user_id,
+        "count": len(records),
+        "results": records
     }
 
 @router.get("/stats")

@@ -38,13 +38,19 @@ Upload a room image and receive a redesigned version.
 
 ### Form Fields
 
-| Field       | Type   | Required | Description                            |
-| ----------- | ------ | -------- | -------------------------------------- |
-| file        | File   | Yes      | Room image (JPEG, PNG, WEBP, max 10MB) |
-| base_prompt | String | No       | Custom prompt (default provided)       |
-| click_x     | Int    | No       | X coordinate for object edit           |
-| click_y     | Int    | No       | Y coordinate for object edit           |
-| user_id     | String | No       | User identifier                        |
+| Field            | Type    | Required | Description                                                    |
+| ---------------- | ------- | -------- | ---------------------------------------------------------------|
+| file             | File    | Yes      | Room image (JPEG, PNG, WEBP, max 10MB)                         |
+| base_prompt      | String  | No       | Full custom design prompt, 3-500 chars (default provided)      |
+| click_x          | Int     | No       | X coordinate for object edit                                    |
+| click_y          | Int     | No       | Y coordinate for object edit                                    |
+| user_id          | String  | No       | User identifier                                                 |
+| force_regenerate | Boolean | No       | Skip the cache and produce a fresh variation (default: false)  |
+
+> **Note:** `base_prompt` used to be one of a fixed set of style keywords
+> (`scandinavian`, `royal`, `industrial`, `bohemian`). The ML pipeline now
+> builds and expects a full descriptive prompt, so any free-form text between
+> 3 and 500 characters is accepted.
 
 ---
 
@@ -138,6 +144,42 @@ Returns API capabilities and constraints.
     "base64_supported": true,
     "click_coordinates_supported": true
     }
+}
+```
+
+---
+
+## GET /generate/history
+
+Returns a user's past generations, most recent first. Use this to show
+previously generated redesigns, or let the user pick one to resubmit with
+`force_regenerate=true` for a new variation.
+
+### Query Parameters
+
+| Param   | Type | Required | Description                          |
+| ------- | ---- | -------- | ------------------------------------- |
+| user_id | String | No     | Defaults to "default"                |
+| limit   | Int    | No     | Max records to return (default 20, max 100) |
+
+### Response 200
+
+```json
+{
+  "user_id": "user123",
+  "count": 2,
+  "results": [
+    {
+      "request_id": "a1b2c3d4",
+      "user_id": "user123",
+      "base_prompt": "warm minimalist living room with wood accents",
+      "input_url": "https://.../input_a1b2c3d4.jpg",
+      "output_url": "https://.../output_a1b2c3d4.jpg",
+      "cache_hit": false,
+      "processing_time_ms": 42350.12,
+      "created_at": "2026-09-20T10:15:00+00:00"
+    }
+  ]
 }
 ```
 

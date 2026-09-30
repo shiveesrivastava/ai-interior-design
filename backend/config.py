@@ -13,8 +13,15 @@ IMAGE_SIZE = (512, 512)
 IMAGE_QUALITY = 95
 
 # --- Styles ---
+# NOTE: The ML pipeline used to accept a fixed style keyword (e.g. "scandinavian")
+# and expanded it into a full prompt internally. It now expects a full,
+# free-form design prompt directly. AVAILABLE_STYLES is kept only as a set of
+# quick-pick suggestions for the client UI - it is NOT validated against
+# anymore, any non-empty prompt within MIN/MAX_PROMPT_LENGTH is accepted.
 AVAILABLE_STYLES = ["scandinavian", "royal", "industrial", "bohemian"]
-DEFAULT_STYLE = "scandinavian"
+DEFAULT_STYLE = "A tastefully redesigned room with cohesive modern furniture, natural light, and clean lines"
+MIN_PROMPT_LENGTH = 3
+MAX_PROMPT_LENGTH = 500
 
 # --- ML Pipeline ---
 ML_INFERENCE_STEPS = 20

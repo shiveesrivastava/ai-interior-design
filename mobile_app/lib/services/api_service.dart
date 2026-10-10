@@ -1,25 +1,17 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:http/http.dart' as http;
-import '../models/generate_response.dart';
-<<<<<<< HEAD
 import 'package:http_parser/http_parser.dart';
-=======
->>>>>>> origin/main
+import '../models/generate_response.dart';
 
 // Handles all communication with the FastAPI backend.
 //
-// IMPORTANT: baseUrl must point to wherever the backend is actually running
-// (e.g. an ngrok URL your backend teammate gives you, like
-// "https://abcd-1234.ngrok-free.app"). Do NOT include a trailing slash.
+// baseUrl must point to wherever the backend is actually running.
+// Do NOT include a trailing slash.
 class ApiService {
-  // TODO: replace this with the real backend URL before testing Phase 5.
-<<<<<<< HEAD
-  //NEED TO CHANGE LATER// //THE URL NGROK LINK CHANGE//
-  static const String baseUrl = "http://127.0.0.1:8000";
-=======
-  static const String baseUrl = "https://wackiness-spoils-manhunt.ngrok-free.dev";
->>>>>>> origin/main
+  // Your PC's Wi-Fi address (from `ipconfig`). It can change when the
+  // router reassigns it, so update it if the app stops reaching the backend.
+  static const String baseUrl = "http://192.168.88.7:8000";
 
   // Sends the selected image + style to the backend and waits for the
   // generated result. Throws an Exception with a readable message on failure.
@@ -34,20 +26,16 @@ class ApiService {
     request.fields['base_prompt'] = style;
     request.fields['user_id'] = 'flutter_app_user';
     request.files.add(
-<<<<<<< HEAD
+      // The backend checks the content type, so send the real one.
       await http.MultipartFile.fromPath(
         'file',
         imageFile.path,
-        contentType: MediaType('image', 'jpeg'),
+        contentType: _mediaTypeFor(imageFile.path),
       ),
-=======
-      await http.MultipartFile.fromPath('file', imageFile.path),
->>>>>>> origin/main
     );
 
     try {
-      // The backend can take 30-120 seconds to respond (real ML generation),
-      // so we set a generous timeout rather than Flutter's tiny default.
+      // Generation can take 30-120 seconds, so use a generous timeout.
       final streamedResponse = await request.send().timeout(
         const Duration(seconds: 130),
       );
@@ -72,6 +60,18 @@ class ApiService {
     } catch (e) {
       if (e is Exception) rethrow;
       throw Exception("Unexpected error: $e");
+    }
+  }
+
+  static MediaType _mediaTypeFor(String path) {
+    final ext = path.toLowerCase().split('.').last;
+    switch (ext) {
+      case 'png':
+        return MediaType('image', 'png');
+      case 'webp':
+        return MediaType('image', 'webp');
+      default:
+        return MediaType('image', 'jpeg');
     }
   }
 }

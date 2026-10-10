@@ -18,8 +18,25 @@ class UploadScreen extends StatefulWidget {
 
 class _UploadScreenState extends State<UploadScreen> {
   File? _selectedImage;
-  String _selectedStyleId = availableStyles.first.id;
+  final TextEditingController _promptController = TextEditingController();
   final ImagePicker _picker = ImagePicker();
+
+  // Limits enforced by the backend (config.py).
+  static const int _minPromptLength = 3;
+  static const int _maxPromptLength = 500;
+
+  @override
+  void initState() {
+    super.initState();
+    // Rebuild as the user types so the quick-idea highlight stays accurate.
+    _promptController.addListener(() => setState(() {}));
+  }
+
+  @override
+  void dispose() {
+    _promptController.dispose();
+    super.dispose();
+  }
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -81,11 +98,21 @@ class _UploadScreenState extends State<UploadScreen> {
       );
       return;
     }
+    final prompt = _promptController.text.trim();
+    if (prompt.length < _minPromptLength) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please describe the style you want (a few words).'),
+        ),
+      );
+      return;
+    }
     Navigator.of(context).push(
       MaterialPageRoute(
+        // LoadingScreen's `styleId` parameter now carries the full prompt text.
         builder: (_) => LoadingScreen(
           imageFile: _selectedImage!,
-          styleId: _selectedStyleId,
+          styleId: prompt,
         ),
       ),
     );
@@ -96,7 +123,8 @@ class _UploadScreenState extends State<UploadScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('Upload Your Room')),
       body: SafeArea(
-        child: Padding(
+        child: SingleChildScrollView(
+          keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.onDrag,
           padding: const EdgeInsets.all(20.0),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -148,24 +176,46 @@ class _UploadScreenState extends State<UploadScreen> {
               ),
               const SizedBox(height: 28),
               Text(
-                'Choose a style',
+                'Describe your style',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
                   fontWeight: FontWeight.bold,
                 ),
               ),
               const SizedBox(height: 12),
+              TextField(
+                controller: _promptController,
+                minLines: 3,
+                maxLines: 5,
+                maxLength: _maxPromptLength,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  hintText: 'e.g. Cozy modern living room with warm lighting, '
+                      'light wood furniture and green plants',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Or start from a quick idea:',
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
+              ),
+              const SizedBox(height: 8),
               Wrap(
                 spacing: 10,
                 runSpacing: 10,
                 children: availableStyles.map((style) {
                   return StyleChip(
                     style: style,
-                    isSelected: _selectedStyleId == style.id,
-                    onTap: () => setState(() => _selectedStyleId = style.id),
+                    isSelected: _promptController.text == style.prompt,
+                    onTap: () => setState(
+                          () => _promptController.text = style.prompt,
+                    ),
                   );
                 }).toList(),
               ),
-              const Spacer(),
+              const SizedBox(height: 28),
               PrimaryButton(
                 label: 'Generate Design',
                 icon: Icons.auto_awesome_rounded,

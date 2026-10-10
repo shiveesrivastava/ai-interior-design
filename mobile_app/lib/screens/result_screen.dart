@@ -4,6 +4,7 @@ import '../models/generate_response.dart';
 import '../widgets/image_card.dart';
 import '../widgets/buttons.dart';
 import 'ar_screen.dart';
+import 'ar_placement_screen.dart';
 import 'home_screen.dart';
 
 // Shows the original photo and the AI-generated redesign side by side.
@@ -114,12 +115,27 @@ class ResultScreen extends StatelessWidget {
                   onPressed: () {
                     Navigator.of(context).push(
                       MaterialPageRoute(
-                        builder: (_) => ArScreen(
+                        builder: (_) => ArPlacementScreen(
                           generatedImageUrl: response.outputUrl!,
                         ),
                       ),
                     );
                   },
+                ),
+              if (response.outputUrl != null)
+                Center(
+                  child: TextButton(
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ArScreen(
+                            generatedImageUrl: response.outputUrl!,
+                          ),
+                        ),
+                      );
+                    },
+                    child: const Text('Use simple camera overlay instead'),
+                  ),
                 ),
               const SizedBox(height: 12),
               SizedBox(

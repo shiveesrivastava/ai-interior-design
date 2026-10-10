@@ -1,7 +1,13 @@
 import 'package:flutter/material.dart';
 import '../widgets/buttons.dart';
 import 'upload_screen.dart';
-import 'ar_screen.dart';
+import 'ar_placement_screen.dart';
+
+// Developer-only shortcut. It is OFF unless the app is built with
+//   flutter run --release --dart-define=AR_TEST=true
+// A normal build (no flag) never shows the button, so there is nothing to
+// remove before presenting.
+const bool kArTest = bool.fromEnvironment('AR_TEST');
 // Landing screen. Shows a welcome message and a button to start the
 // upload -> style -> generate flow.
 class HomeScreen extends StatelessWidget {
@@ -67,23 +73,21 @@ class HomeScreen extends StatelessWidget {
                   );
                 },
               ),
-              const SizedBox(height: 12),
-              // TEMP DEBUG BUTTON — remove once backend is live and
-              // the real Upload -> Result -> AR flow can be tested.
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (_) => const ArScreen(
-                        generatedImageUrl:
-                        'https://picsum.photos/id/1080/600/400',
+              if (kArTest) ...[
+                const SizedBox(height: 12),
+                OutlinedButton(
+                  onPressed: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (_) => const ArPlacementScreen(
+                          generatedImageUrl: 'https://picsum.photos/800/600',
+                        ),
                       ),
-                    ),
-                  );
-                },
-                icon: const Icon(Icons.bug_report_outlined),
-                label: const Text('DEBUG: Test AR Screen'),
-              ),
+                    );
+                  },
+                  child: const Text('AR test (sample image)'),
+                ),
+              ],
               const SizedBox(height: 16),
             ],
           ),

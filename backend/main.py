@@ -1,5 +1,5 @@
 from fastapi import FastAPI
-from routes.generate import router as generate_router
+from routes import generate as generate_routes
 from services.ml_services import load_pipeline
 from utils.logger import get_logger
 import asyncio
@@ -11,13 +11,24 @@ app = FastAPI(
     description="API for AI-powered interior design generation",
     version="0.1.0",
 )
-active_requests = 0
 
-app.include_router(generate_router, prefix="/generate", tags=["Generate"])
+app.include_router(generate_routes.router, tags=["Generate"])
+
+@app.middleware("http")
+async def track_active_generation_requests(request, call_next):
+    if request.method == "POST" and request.url.path == "/generate/":
+        generate_routes.active_requests += 1
+        try:
+            response = await call_next(request)
+            return response
+        finally:
+            generate_routes.active_requests -= 1
+
+    return await call_next(request)
 
 @app.on_event("startup")
 async def startup_event():
-    logger.info("Starting up the backend...")
+    logger.info("Starting up the backend.")
     load_pipeline()
     logger.info("Startup complete")
 
@@ -29,10 +40,11 @@ def root():
 async def shutdown_event():
     print("Shutting down. Waiting for active requests.")
 
-    while active_requests > 0:
-        print(f"Waiting. {active_requests} request(s) still running")
+    while generate_routes.active_requests > 0:
+        print(
+            f"Waiting. {generate_routes.active_requests} "
+            "request(s) still running"
+        )
         await asyncio.sleep(1)
 
     print("All requests completed. Shutdown safe.")
-
-app.include_router(generate_router)

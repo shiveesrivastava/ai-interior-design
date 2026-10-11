@@ -1,5 +1,11 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Query 
-from services.ml_services import generate, log_gpu_memory, is_pipeline_available
+from services.ml_services import (
+    generate,
+    log_gpu_memory,
+    is_pipeline_available,
+    SUPPORTED_STYLES,
+    SUPPORTED_OPERATIONS,
+)
 from utils.image_utils import validate_image, preprocess_image
 from utils.logger import get_logger
 from services.storage_services import upload_image
@@ -34,15 +40,17 @@ def log_stats():
 @router.post("/generate/")
 async def generate_design(
     file: UploadFile = File(...),
-    base_prompt: str = Form(DEFAULT_STYLE),
+    base_prompt: str = Form(...),
+    style: str = Form("scandinavian"),
+    custom_style_prompt: str = Form(None),
     click_x: int = Form(None),
     click_y: int = Form(None),
     user_id: str = Form("default"),
     force_regenerate: bool = Form(False),
-    format: str = Query("raw", pattern="^(raw|base64)$")
+    operation: str = Form("redesign"),
+    format: str = Query("raw", pattern="^(raw|base64)$"),
 ):
     global total_requests, success_requests, failed_requests, active_requests
-    active_requests += 1
     request_id = str(uuid.uuid4())[:8]
     input_filename = f"input_{request_id}.jpg"
     output_filename = f"output_{request_id}.jpg"
@@ -54,13 +62,78 @@ async def generate_design(
     if not filename.endswith((".jpg", ".jpeg", ".png", ".webp")):
         raise HTTPException(status_code=400, detail="Invalid file extension. Allowed: .jpg, .jpeg, .png, .webp")
 
-    # base_prompt is now a full custom design prompt (not a fixed style
-    # keyword), so validate it by length rather than against a fixed list.
-    base_prompt = base_prompt.strip() if base_prompt else DEFAULT_STYLE
-    if not (MIN_PROMPT_LENGTH <= len(base_prompt) <= MAX_PROMPT_LENGTH):
+        # Validate the selected design style.
+    style = style.strip().lower()
+
+    if style not in SUPPORTED_STYLES:
         raise HTTPException(
             status_code=400,
-            detail=f"base_prompt must be between {MIN_PROMPT_LENGTH} and {MAX_PROMPT_LENGTH} characters."
+            detail=(
+                f"Invalid style. Choose one of: "
+                f"{', '.join(sorted(SUPPORTED_STYLES))}."
+            ),
+        )
+
+    # Validate room modification instructions.
+    base_prompt = base_prompt.strip() if base_prompt else ""
+
+    if not (
+        MIN_PROMPT_LENGTH
+        <= len(base_prompt)
+        <= MAX_PROMPT_LENGTH
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"base_prompt must be between "
+                f"{MIN_PROMPT_LENGTH} and "
+                f"{MAX_PROMPT_LENGTH} characters."
+            ),
+        )
+
+    # A custom style needs its own description.
+    if style == "custom":
+        custom_style_prompt = (
+            custom_style_prompt.strip()
+            if custom_style_prompt
+            else ""
+        )
+
+        if not (
+            MIN_PROMPT_LENGTH
+            <= len(custom_style_prompt)
+            <= MAX_PROMPT_LENGTH
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"custom_style_prompt must be between "
+                    f"{MIN_PROMPT_LENGTH} and "
+                    f"{MAX_PROMPT_LENGTH} characters "
+                    f"when style='custom'."
+                ),
+            )
+    else:
+        custom_style_prompt = None
+
+    # Validate the ML operation.
+    operation = operation.strip().lower()
+
+    if operation not in SUPPORTED_OPERATIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Invalid operation. Choose one of: "
+                f"{', '.join(sorted(SUPPORTED_OPERATIONS))}."
+            ),
+        )
+
+    if operation == "add_furniture" and (
+        click_x is None or click_y is None
+    ):
+        raise HTTPException(
+            status_code=400,
+            detail="click_x and click_y are required for add_furniture.",
         )
 
     # Read file
@@ -89,11 +162,20 @@ async def generate_design(
         )
 
     # Generate cache key
+    # Include every generation setting that can affect the output.
+    cache_prompt = (
+        f"pipeline_version=v2-furniture"
+        f"|style={style}"
+        f"|custom_style={custom_style_prompt or ''}"
+        f"|room_instructions={base_prompt}"
+        f"|operation={operation}"
+    )
+
     cache_key = generate_cache_key(
         processed_bytes,
-        base_prompt,
+        cache_prompt,
         click_x,
-        click_y
+        click_y,
     )
 
     # Check Redis cache (skipped entirely when the user asks to regenerate)
@@ -120,6 +202,9 @@ async def generate_design(
                         "request_id": request_id,
                         "user_id": user_id,
                         "base_prompt": base_prompt,
+                        "style": style,
+                        "custom_style_prompt": custom_style_prompt,
+                        "operation": operation,
                         "click_x": click_x,
                         "click_y": click_y,
                         "input_url": cached_response.get("input_url"),
@@ -158,7 +243,6 @@ async def generate_design(
         for attempt in range(1, max_attempts + 1):
             try:
                 logger.info(f"[REQ-{request_id}] ML attempt {attempt}")
-
                 result_bytes = await asyncio.wait_for(
                     asyncio.to_thread(
                         generate,
@@ -166,11 +250,13 @@ async def generate_design(
                         base_prompt,
                         click_x,
                         click_y,
-                        user_id
+                        user_id,
+                        style=style,
+                        custom_style_prompt=custom_style_prompt,
+                        operation=operation,
                     ),
-                    timeout=120
+                    timeout=120,
                 )
-
                 break  # success → exit loop
 
             except Exception as e:
@@ -222,6 +308,9 @@ async def generate_design(
                     "request_id": request_id,
                     "user_id": user_id,
                     "base_prompt": base_prompt,
+                    "style": style,
+                    "custom_style_prompt": custom_style_prompt,
+                    "operation": operation,
                     "click_x": click_x,
                     "click_y": click_y,
                     "input_url": input_url,
@@ -261,6 +350,9 @@ async def generate_design(
                 "request_id": request_id,
                 "user_id": user_id,
                 "base_prompt": base_prompt,
+                "style": style,
+                "custom_style_prompt": custom_style_prompt,
+                "operation": operation,
                 "click_x": click_x,
                 "click_y": click_y,
                 "input_url": input_url,
@@ -304,9 +396,6 @@ async def generate_design(
             )
         else:
             raise HTTPException(status_code=500, detail="Image Generation Failed.")
-        
-    finally:
-        active_requests -= 1
                
 @router.get("/generate/metadata")
 def get_metadata():
@@ -325,7 +414,11 @@ def get_metadata():
             "click_coordinates_supported": True,
             "custom_prompt_supported": True,
             "force_regenerate_supported": True,
-            "history_supported": True
+            "history_supported": True,
+            "style_selection_supported": True,
+            "custom_style_supported": True,
+            "supported_styles": sorted(SUPPORTED_STYLES),
+            "supported_operations": sorted(SUPPORTED_OPERATIONS),
         },
         "prompt_constraints": {
             "min_length": MIN_PROMPT_LENGTH,

@@ -20,9 +20,15 @@ import 'package:vector_math/vector_math_64.dart' as vector;
 //   - pinch with two fingers        -> resize
 //   - twist with two fingers        -> rotate freely
 class ArPlacementScreen extends StatefulWidget {
-  final String generatedImageUrl;
+  // Provide either the image bytes (normal case) or a link to download from.
+  final Uint8List? imageBytes;
+  final String? generatedImageUrl;
 
-  const ArPlacementScreen({super.key, required this.generatedImageUrl});
+  const ArPlacementScreen({super.key, this.imageBytes, this.generatedImageUrl})
+      : assert(
+  imageBytes != null || generatedImageUrl != null,
+  'Provide imageBytes or generatedImageUrl',
+  );
 
   @override
   State<ArPlacementScreen> createState() => _ArPlacementScreenState();
@@ -108,14 +114,19 @@ class _ArPlacementScreenState extends State<ArPlacementScreen> {
   // Downloads the generated image so it can be used as an AR texture.
   Future<void> _loadImage() async {
     try {
-      final response = await http.get(
-        Uri.parse(widget.generatedImageUrl),
-        headers: {'ngrok-skip-browser-warning': 'true'},
-      );
-      if (response.statusCode != 200) {
-        throw Exception('Image download failed (${response.statusCode})');
+      final Uint8List bytes;
+      if (widget.imageBytes != null) {
+        bytes = widget.imageBytes!;
+      } else {
+        final response = await http.get(
+          Uri.parse(widget.generatedImageUrl!),
+          headers: {'ngrok-skip-browser-warning': 'true'},
+        );
+        if (response.statusCode != 200) {
+          throw Exception('Image download failed (${response.statusCode})');
+        }
+        bytes = response.bodyBytes;
       }
-      final bytes = response.bodyBytes;
 
       // Read the real width/height so the slab has the right proportions.
       final codec = await ui.instantiateImageCodec(bytes);

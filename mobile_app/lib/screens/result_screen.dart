@@ -74,8 +74,12 @@ class ResultScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 10),
-              response.outputUrl != null
-                  ? ImageCard(networkUrl: response.outputUrl, height: 260)
+              response.hasImage
+                  ? ImageCard(
+                memoryBytes: response.imageBytes,
+                networkUrl: response.outputUrl,
+                height: 260,
+              )
                   : Container(
                 height: 260,
                 decoration: BoxDecoration(
@@ -108,7 +112,7 @@ class ResultScreen extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 24),
-              if (response.outputUrl != null)
+              if (response.hasImage)
                 PrimaryButton(
                   label: 'View in AR',
                   icon: Icons.view_in_ar_rounded,
@@ -116,20 +120,22 @@ class ResultScreen extends StatelessWidget {
                     Navigator.of(context).push(
                       MaterialPageRoute(
                         builder: (_) => ArPlacementScreen(
-                          generatedImageUrl: response.outputUrl!,
+                          imageBytes: response.imageBytes,
+                          generatedImageUrl: response.outputUrl,
                         ),
                       ),
                     );
                   },
                 ),
-              if (response.outputUrl != null)
+              if (response.hasImage)
                 Center(
                   child: TextButton(
                     onPressed: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => ArScreen(
-                            generatedImageUrl: response.outputUrl!,
+                            imageBytes: response.imageBytes,
+                            generatedImageUrl: response.outputUrl,
                           ),
                         ),
                       );

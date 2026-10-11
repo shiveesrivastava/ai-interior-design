@@ -1,271 +1,339 @@
-# API Contract — Backend
+# API Contract --- RoomAI Backend and ML Pipeline
 
-**Version:** 2.0  
-**Last Updated:** April 2026  
-**Base URL (local):** http://127.0.0.1:8000  
-**Base URL (production):** "https://wackiness-spoils-manhunt.ngrok-free.dev"
+**API contract version:** 3.0\
+**Last updated:** October 2026
 
----
+-   **Local backend URL:** `http://127.0.0.1:8000`
+-   **Remote ML pipeline URL:** Configured through `NGROK_URL`. The
+    currently documented URL is
+    `https://wackiness-spoils-manhunt.ngrok-free.dev`; it may change
+    when the tunnel restarts.
 
-## Endpoints
+This document describes the backend API and the backend-to-ML-pipeline
+contract.
 
-### GET /generate/
+## 1. Supported operations
 
-Information about the generate endpoint.
+  -----------------------------------------------------------------------
+  Operation               Purpose                 Click coordinates
+  ----------------------- ----------------------- -----------------------
+  `redesign`              Redesign the room in    Optional
+                          the selected interior   
+                          style while preserving  
+                          the existing room       
+                          structure.              
 
-**Response 200**
-```json
+  `add_furniture`         Add requested furniture Both `click_x` and
+                          at a selected location. `click_y` required
+                          Mask generation and     
+                          inpainting may be used  
+                          internally by the ML    
+                          pipeline.               
+  -----------------------------------------------------------------------
+
+`inpaint` is **not** a supported standalone operation. Inpainting is an
+internal ML technique, not a separate API operation.
+
+## 2. Endpoints
+
+  -----------------------------------------------------------------------
+  Method                  Endpoint                Purpose
+  ----------------------- ----------------------- -----------------------
+  `GET`                   `/`                     Basic backend status
+
+  `GET`                   `/health`               Health check
+
+  `GET`                   `/generate/metadata`    Supported styles,
+                                                  operations, and
+                                                  constraints
+
+  `POST`                  `/generate/`            Generate a room image
+
+  `GET`                   `/history`              Retrieve generation
+                                                  history
+
+  `GET`                   `/stats`                Retrieve generation
+                                                  statistics
+  -----------------------------------------------------------------------
+
+The generation router is mounted without an extra `/generate` prefix, so
+the generation endpoint is `/generate/`.
+
+## 3. Generate an image --- `POST /generate/`
+
+**Content type:** `multipart/form-data`
+
+### Form fields
+
+  -------------------------------------------------------------------------------------------
+  Field                   Type                   Required Default          Description
+  ----------------------- ------------- ----------------- ---------------- ------------------
+  `file`                  File                        Yes ---              Input room image.
+                                                                           Allowed
+                                                                           extensions:
+                                                                           `.jpg`, `.jpeg`,
+                                                                           `.png`, `.webp`.
+                                                                           Documented maximum
+                                                                           size: 10 MB.
+
+  `base_prompt`           String                      Yes ---              Room modification
+                                                                           instructions.
+                                                                           Backend validation
+                                                                           requires 3--500
+                                                                           characters.
+
+  `style`                 String                       No `scandinavian`   One of
+                                                                           `scandinavian`,
+                                                                           `royal`,
+                                                                           `industrial`,
+                                                                           `custom`.
+
+  `custom_style_prompt`   String              Conditional ---              Required when
+                                                                           `style=custom`;
+                                                                           describes the
+                                                                           desired style and
+                                                                           must be 3--500
+                                                                           characters.
+
+  `click_x`               Integer             Conditional ---              X coordinate for
+                                                                           the selected
+                                                                           furniture
+                                                                           location. Required
+                                                                           for
+                                                                           `add_furniture`.
+
+  `click_y`               Integer             Conditional ---              Y coordinate for
+                                                                           the selected
+                                                                           furniture
+                                                                           location. Required
+                                                                           for
+                                                                           `add_furniture`.
+
+  `user_id`               String                       No `default`        Identifier used to
+                                                                           associate requests
+                                                                           and history.
+
+  `force_regenerate`      Boolean                      No `false`          Skip the cache and
+                                                                           request a fresh
+                                                                           generation.
+
+  `operation`             String                       No `redesign`       `redesign` or
+                                                                           `add_furniture`.
+  -------------------------------------------------------------------------------------------
+
+`base_prompt` describes the requested room changes, while `style`
+selects the style preset. For a custom style, provide both `base_prompt`
+and `custom_style_prompt`.
+
+For `add_furniture`, send both coordinates. They must match the
+coordinate system expected by the ML pipeline for the uploaded image.
+
+### Query parameters
+
+  Parameter   Allowed values    Default   Description
+  ----------- ----------------- --------- ------------------------------
+  `format`    `raw`, `base64`   `raw`     Selects the response format.
+
+### Successful responses
+
+**`200 OK` --- Raw image:** The backend returns image bytes with an
+image content type, normally `image/jpeg`. The configured output is
+expected to be 512 × 512 pixels.
+
+**`200 OK` --- Base64 image:** `POST /generate/?format=base64` returns
+JSON in this form:
+
+``` json
 {
-  "endpoint": "/generate/",
-  "method": "POST",
-  "input": "image file (JPEG, PNG, WEBP)",
-  "output": "redesigned room image (JPEG or base64)"
-}
-````
-
----
-
-### POST /generate/
-
-Upload a room image and receive a redesigned version.
-
----
-
-## Request
-
-* Method: POST
-* Content-Type: multipart/form-data
-
-### Form Fields
-
-| Field            | Type    | Required | Description                                                    |
-| ---------------- | ------- | -------- | ---------------------------------------------------------------|
-| file             | File    | Yes      | Room image (JPEG, PNG, WEBP, max 10MB)                         |
-| base_prompt      | String  | No       | Full custom design prompt, 3-500 chars (default provided)      |
-| click_x          | Int     | No       | X coordinate for object edit                                    |
-| click_y          | Int     | No       | Y coordinate for object edit                                    |
-| user_id          | String  | No       | User identifier                                                 |
-| force_regenerate | Boolean | No       | Skip the cache and produce a fresh variation (default: false)  |
-
-> **Note:** `base_prompt` used to be one of a fixed set of style keywords
-> (`scandinavian`, `royal`, `industrial`, `bohemian`). The ML pipeline now
-> builds and expects a full descriptive prompt, so any free-form text between
-> 3 and 500 characters is accepted.
-
----
-
-### Query Parameters
-
-| Param  | Values       | Description                    |
-| ------ | ------------ | ------------------------------ |
-| format | raw / base64 | Response format (default: raw) |
-
----
-
-## Response
-
-### 200 — Raw Image (default)
-
-* Content-Type: `image/jpeg`
-* Headers:
-
-```
-Content-Disposition: inline; filename="redesigned_room.jpg"
-```
-
-* Body: JPEG image (512x512)
-
----
-
-### 200 — Base64 Response
-
-```json
-{
-  "image_base64": "..."
-}
-```
-
----
-
-## Error Responses
-
-### 400 — Invalid Input
-
-```json
-{
-  "detail": "Invalid image content or dimensions."
-}
-```
-
-### 503 — ML Service Unavailable
-
-```json
-{
-  "detail": "Cannot reach image generation service."
-}
-```
-
-### 504 — Timeout
-
-```json
-{
-  "detail": "Image generation timed out."
-}
-```
-
-### 500 — General Failure
-
-```json
-{
-  "detail": "Image Generation Failed."
-}
-```
-
----
-
-## GET /generate/metadata
-
-Returns API capabilities and constraints.
-
-### Response 200
-
-```json
-{
-  "output_image": {
-    "format": "JPEG",
-    "dimensions": "512x512",
-    "quality": 95
-    },
-  "input_constraints": {
-    "max_file_size": "10MB",
-    "allowed_formats": ["jpg", "jpeg", "png", "webp"]
-    },
-  "features": {
-    "base64_supported": true,
-    "click_coordinates_supported": true
-    }
-}
-```
-
----
-
-## GET /generate/history
-
-Returns a user's past generations, most recent first. Use this to show
-previously generated redesigns, or let the user pick one to resubmit with
-`force_regenerate=true` for a new variation.
-
-### Query Parameters
-
-| Param   | Type | Required | Description                          |
-| ------- | ---- | -------- | ------------------------------------- |
-| user_id | String | No     | Defaults to "default"                |
-| limit   | Int    | No     | Max records to return (default 20, max 100) |
-
-### Response 200
-
-```json
-{
-  "user_id": "user123",
-  "count": 2,
-  "results": [
-    {
-      "request_id": "a1b2c3d4",
-      "user_id": "user123",
-      "base_prompt": "warm minimalist living room with wood accents",
-      "input_url": "https://.../input_a1b2c3d4.jpg",
-      "output_url": "https://.../output_a1b2c3d4.jpg",
-      "cache_hit": false,
-      "processing_time_ms": 42350.12,
-      "created_at": "2026-09-20T10:15:00+00:00"
-    }
-  ]
+  "image_base64": "<base64-encoded-image>"
 }
 ```
 
----
+The exact JSON metadata may vary according to the route implementation.
 
-## GET /health
+### Error responses
 
-Server health check.
+  -----------------------------------------------------------------------
+  HTTP status                         Meaning
+  ----------------------------------- -----------------------------------
+  `400 Bad Request`                   Invalid file, style, operation,
+                                      prompt length, missing custom style
+                                      description, or missing click
+                                      coordinates for `add_furniture`.
 
-### Response 200
+  `500 Internal Server Error`         Generation failed or the ML
+                                      pipeline returned an unexpected
+                                      response.
 
-```json
+  `503 Service Unavailable`           The ML service cannot be reached or
+                                      is unavailable, depending on the
+                                      route's error mapping.
+
+  `504 Gateway Timeout`               Generation exceeded the configured
+                                      timeout, depending on the route's
+                                      error mapping.
+  -----------------------------------------------------------------------
+
+Errors use FastAPI's JSON structure, typically
+`{"detail": "Description of the error"}`.
+
+## 4. Styles and metadata --- `GET /generate/metadata`
+
+Supported styles: - `scandinavian` - `royal` - `industrial` - `custom`
+
+Supported operations: - `redesign` - `add_furniture`
+
+The metadata endpoint reports capabilities, output-image settings, input
+constraints, and supported styles and operations. Use the live endpoint
+as the source of truth.
+
+``` bash
+curl "http://127.0.0.1:8000/generate/metadata"
+```
+
+## 5. Generation history --- `GET /history`
+
+Returns recent generation records, most recent first, for the requested
+user.
+
+  ----------------------------------------------------------------------------
+  Parameter     Type                   Required Default         Description
+  ------------- ------------- ----------------- --------------- --------------
+  `user_id`     String                       No `default`       User whose
+                                                                history should
+                                                                be returned.
+
+  `limit`       Integer                      No Route-defined   Maximum
+                                                                records,
+                                                                subject to
+                                                                backend
+                                                                constraints.
+  ----------------------------------------------------------------------------
+
+History records can include `request_id`, `user_id`, `base_prompt`,
+`style`, `custom_style_prompt`, `operation`, `click_x`, `click_y`,
+`input_url`, `output_url`, `cache_hit`, `processing_time_ms`, and
+`created_at`, depending on the stored record and response
+implementation.
+
+``` bash
+curl "http://127.0.0.1:8000/history?user_id=test_user"
+```
+
+## 6. Health and statistics
+
+### `GET /health`
+
+Checks backend and pipeline status. A healthy response may look like:
+
+``` json
 {
-  "status": "healthy"
+  "status": "healthy",
+  "pipeline_status": "loaded"
 }
 ```
 
----
+Fields reflect the current runtime state.
 
-## Sample curl Commands
+### `GET /stats`
 
-### Raw Image
+Returns generation statistics such as request totals, successes,
+failures, and success rate, as implemented by the backend.
 
-```bash
-curl -X POST "http://127.0.0.1:8000/generate/" \
-  -F "file=@room.jpg" \
-  --output result.jpg
+``` bash
+curl "http://127.0.0.1:8000/stats"
 ```
 
----
+### `GET /`
 
-### Base64 Response
+Returns a basic response indicating that the RoomAI backend is running.
 
-```bash
-curl -X POST "http://127.0.0.1:8000/generate/?format=base64" \
-     -F "file=@room.jpg" \
-     -F "base_prompt=modern minimalist design" \
-     -F "click_x=256" \
-     -F "click_y=256" \
-     -F "user_id=user123"
+## 7. Sample requests
+
+Replace `room.jpg` with the path to your image.
+
+### A. Redesign a room
+
+``` bash
+curl -X POST "http://127.0.0.1:8000/generate/"   -F "file=@room.jpg"   -F "base_prompt=Transform this room into a Scandinavian-style interior with light natural wood, neutral colours, warm lighting, and minimal decor. Preserve the room structure."   -F "style=scandinavian"   -F "operation=redesign"   -F "user_id=test_user"   -F "force_regenerate=true"   --output redesigned_room.jpg
 ```
 
----
+### B. Add furniture at a selected location
 
-## Notes for Mobile Developer
+The coordinates below are examples only. Use coordinates that match the
+uploaded image and target location.
 
-* Send image as `multipart/form-data`
-* Default response is raw image (`image/jpeg`)
-* Use `?format=base64` if base64 is required
-* Max upload size: 10MB
-* Output image is always 512x512 JPEG
-* ngrok URL changes each session — use latest shared URL
+``` bash
+curl -X POST "http://127.0.0.1:8000/generate/"   -F "file=@room.jpg"   -F "base_prompt=Add a clearly visible red three-seater sofa and a large wooden bookshelf to the selected area. Preserve the existing walls, windows, flooring, and camera angle."   -F "style=scandinavian"   -F "operation=add_furniture"   -F "click_x=370"   -F "click_y=350"   -F "user_id=test_user"   -F "force_regenerate=true"   --output room_with_furniture.jpg
+```
 
----
+Both coordinates are required for `add_furniture`.
 
-````
-## Rate Limiting & Usage Notes
+### C. Request base64 output
 
-- The ML pipeline runs on Kaggle GPU (T4)
-- Approximate limit: ~30 hours per week
-- Excessive usage may cause:
-  - slower responses
-  - temporary unavailability
+``` bash
+curl -X POST "http://127.0.0.1:8000/generate/?format=base64"   -F "file=@room.jpg"   -F "base_prompt=Create a warm minimalist living room with wood accents and a cozy reading nook."   -F "style=scandinavian"   -F "operation=redesign"   -F "user_id=test_user"
+```
 
-Use responsibly during testing.
+## 8. Backend-to-ML-pipeline contract
 
-## Performance
+The backend sends a multipart request to the remote pipeline's
+`/generate` endpoint. It forwards these fields as applicable:
 
-- Typical response time: 30–60 seconds
-- Depends on:
-  - GPU availability
-  - image complexity
-  - current load
+-   `file`
+-   `user_id`
+-   `operation`
+-   `base_prompt`
+-   `custom_prompt`
+-   `furniture_prompt`
+-   `click_x`
+-   `click_y`
 
-Timeout threshold: ~120 seconds
+Coordinates are sent as strings in the multipart form. Prompt fields
+depend on the selected style.
 
-## Example
+Intended pipeline behavior:
 
-### Input
-- Image size: ~700 KB
+1.  **`redesign`:** use the input room image and style/instructions to
+    produce a redesigned room while preserving the room structure.
+2.  **`add_furniture`:** use the input image, furniture instructions,
+    and selected click location to add furniture. Mask generation and
+    inpainting are internal processing steps.
 
-### Output
-- Format: JPEG
-- Size: ~150–300 KB
+The remote pipeline must accept the field names and operation values
+sent by the backend. The backend expects a non-empty image response with
+an `image/*` content type. The remote call timeout is 120 seconds.
 
-### Base64 Response
-- Size increases by ~33% compared to raw image
+A successful HTTP response does not guarantee that the requested
+furniture was visually added; inspect generated output during testing.
 
----
+## 9. Cache behavior
+
+The backend caches generated results. Requests may return cached output
+unless `force_regenerate=true` is supplied. The cache key includes the
+pipeline version, style, custom style prompt, room instructions,
+operation, and click coordinates so materially different requests do not
+intentionally share a cache entry.
+
+## 10. Operational notes
+
+-   The remote pipeline URL is configured through `NGROK_URL`. The ngrok
+    URL may change when the tunnel restarts.
+-   Pipeline availability depends on the remote runtime and GPU session.
+-   Generation time varies with model execution, image complexity, and
+    runtime availability.
+-   Check `/health` and `/generate/metadata` when debugging connectivity
+    or supported options.
+
+## 11. Mobile/client integration notes
+
+-   Send image requests as `multipart/form-data`.
+-   Include `base_prompt` and select a `style`.
+-   For `style=custom`, also send `custom_style_prompt`.
+-   Use `operation=redesign` for a full-room redesign.
+-   Use `operation=add_furniture` and include both `click_x` and
+    `click_y` to add furniture at a selected location.
+-   Raw image output is the default; use `?format=base64` when the
+    client needs a base64 JSON response.
+-   Use the live metadata endpoint as the source of truth for supported
+    styles and operations.

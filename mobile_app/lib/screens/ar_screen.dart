@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -7,9 +8,15 @@ import 'package:cached_network_image/cached_network_image.dart';
 // on top. The user can drag, pinch-to-resize, and twist-to-rotate the
 // overlay, plus adjust its opacity to blend it with the real room.
 class ArScreen extends StatefulWidget {
-  final String generatedImageUrl;
+  // Provide either the image bytes (normal case) or a link to the image.
+  final Uint8List? imageBytes;
+  final String? generatedImageUrl;
 
-  const ArScreen({super.key, required this.generatedImageUrl});
+  const ArScreen({super.key, this.imageBytes, this.generatedImageUrl})
+      : assert(
+  imageBytes != null || generatedImageUrl != null,
+  'Provide imageBytes or generatedImageUrl',
+  );
 
   @override
   State<ArScreen> createState() => _ArScreenState();
@@ -104,6 +111,26 @@ class _ArScreenState extends State<ArScreen> {
     );
   }
 
+  // Fills the area with the camera feed (cropping the edges) instead of
+  // stretching it. On Android the preview size is reported in landscape,
+  // so width and height are swapped for portrait.
+  Widget _buildCameraPreview() {
+    final controller = _cameraController!;
+    final previewSize = controller.value.previewSize;
+    if (previewSize == null) return CameraPreview(controller);
+
+    return ClipRect(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: previewSize.height,
+          height: previewSize.width,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -157,7 +184,7 @@ class _ArScreenState extends State<ArScreen> {
                 clipBehavior: Clip.none,
                 children: [
                   // Live camera feed
-                  CameraPreview(_cameraController!),
+                  _buildCameraPreview(),
 
                   // Draggable / pinchable / rotatable overlay image
                   GestureDetector(
@@ -187,8 +214,14 @@ class _ArScreenState extends State<ArScreen> {
                             scale: _scale,
                             child: Opacity(
                               opacity: _opacity,
-                              child: CachedNetworkImage(
-                                imageUrl: widget.generatedImageUrl,
+                              child: widget.imageBytes != null
+                                  ? Image.memory(
+                                widget.imageBytes!,
+                                width: 280,
+                                fit: BoxFit.contain,
+                              )
+                                  : CachedNetworkImage(
+                                imageUrl: widget.generatedImageUrl!,
                                 width: 280,
                                 fit: BoxFit.contain,
                                 placeholder: (context, url) => const SizedBox(
